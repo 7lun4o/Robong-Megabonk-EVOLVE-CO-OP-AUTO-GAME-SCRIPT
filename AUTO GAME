@@ -4,6 +4,8 @@ local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
 local UserInputService = game:GetService("UserInputService")
 local PathfindingService = game:GetService("PathfindingService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
 
 local isAlive = true
 local FILE_NAME = "picker_user_config.json"
@@ -13,7 +15,6 @@ local Config = {
     GoldUpdateInterval = 0.5,
     AutoReroll = true,
     AutoSkip = true,
-    AntiAFK = false,
     AutoChest = false,
     ChestTracers = false,
     MaxChestDistance = 500,
@@ -293,13 +294,52 @@ local function makeButton(parent, text, size, pos)
     return b
 end
 
+local pickerEnabled = false
+local pickerConnection
+
+local function onUpgradeScreen(upgrades)
+    if not isAlive or not pickerEnabled or type(upgrades) ~= "table" then return end
+    if Config.SpamDelay > 0 then task.wait(Config.SpamDelay) end
+
+    local bestPick = findBestUpgrade(upgrades)
+    if bestPick then
+        SelectUpgrade:FireServer(bestPick.ID)
+        if pickerTierLabel then pickerTierLabel.Text = "Upgrade: " .. bestPick.ID end
+        if pickerActionLabel then 
+            pickerActionLabel.Text = "Action: Selected ✅"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: " .. bestPick.ID end
+        return
+    end
+
+    local gold = getGold()
+    local cost = getRerollCost()
+
+    if Config.AutoReroll and cost ~= math.huge and gold >= cost then
+        RerollUpgrade:FireServer()
+        if pickerActionLabel then
+            pickerActionLabel.Text = "Action: Rerolled 🔄"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: Rerolled (" .. cost .. "G)" end
+    elseif Config.AutoSkip then
+        SkipUpgrade:FireServer()
+        if pickerActionLabel then
+            pickerActionLabel.Text = "Action: Skipped ⏭️"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(180, 80, 80)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: Skipped" end
+    end
+end
+
 local function renderContent()
     contentFrame:ClearAllChildren()
     
     if activeTab == "status" then
-        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 320)
         
-        pickerStatusLabel = makeLabel(contentFrame, "Status: OFF", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 5), Color3.fromRGB(200, 200, 200), 14)
+        pickerStatusLabel = makeLabel(contentFrame, pickerEnabled and "Status: ON" or "Status: OFF", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 5), pickerEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(200, 200, 200), 14)
         pickerTierLabel   = makeLabel(contentFrame, "Upgrade: —", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 30), Color3.fromRGB(255, 255, 255), 14)
         pickerActionLabel = makeLabel(contentFrame, "Action: Waiting...", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
         pickerLastLabel   = makeLabel(contentFrame, "Last picked: None", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 80), Color3.fromRGB(140, 140, 140), 13)
@@ -315,7 +355,7 @@ local function renderContent()
             pickerBtn.BackgroundColor3 = pickerEnabled and Color3.fromRGB(150, 40, 40) or colors[Config.ColorIndex].color
             pickerStatusLabel.Text = pickerEnabled and "Status: ON" or "Status: OFF"
             pickerStatusLabel.TextColor3 = pickerEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(200, 200, 200)
-            
+             
             if pickerEnabled then
                 if not pickerConnection then pickerConnection = ShowUpgradeScreen.OnClientEvent:Connect(onUpgradeScreen) end
             else
@@ -327,6 +367,7 @@ local function renderContent()
             local lbl = makeLabel(contentFrame, text, UDim2.new(0, 150, 0, 25), UDim2.new(0, 5, 0, yPos), Color3.fromRGB(255, 255, 255), 13)
             local btn = makeButton(contentFrame, Config[field] and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 240, 0, yPos))
             btn.BackgroundColor3 = Config[field] and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+         
             btn.MouseButton1Click:Connect(function()
                 Config[field] = not Config[field]
                 btn.Text = Config[field] and "ON" or "OFF"
@@ -336,14 +377,12 @@ local function renderContent()
 
         makeConfigToggle("Auto Reroll", "AutoReroll", 190)
         makeConfigToggle("Auto Skip", "AutoSkip", 220)
-        makeConfigToggle("Anti-AFK", "AntiAFK", 250)
-        makeConfigToggle("Auto Chest Farm", "AutoChest", 280)
-        makeConfigToggle("Chest Tracers", "ChestTracers", 310)
+        makeConfigToggle("Auto Chest Farm", "AutoChest", 250)
+        makeConfigToggle("Chest Tracers", "ChestTracers", 280)
 
     elseif activeTab == "themes" then
         contentFrame.CanvasSize = UDim2.new(0, 0, 0, 260)
         
-        -- RAINBOW СТАНДАРТНА ОПЦИЯ (С ПРИОРИТЕТ)
         local rbLbl = makeLabel(contentFrame, "🌈 Rainbow Mode (Priority)", UDim2.new(0, 180, 0, 25), UDim2.new(0, 5, 0, 10), Color3.fromRGB(255, 255, 255), 13)
         local rbBtn = makeButton(contentFrame, Config.Rainbow and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 190, 0, 10))
         rbBtn.BackgroundColor3 = Config.Rainbow and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
@@ -362,7 +401,6 @@ local function renderContent()
 
         makeLabel(contentFrame, "🎨 Select Theme Color:", UDim2.new(1, 0, 0, 20), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
 
-        -- ТАБЛИЦА С ЦВЕТОВЕ
         for i, cData in ipairs(colors) do
             local x = (i - 1) % 2 == 0 and 5 or 195
             local y = math.floor((i - 1) / 2) * 35 + 80
@@ -404,7 +442,7 @@ local function renderContent()
         local killBtn = makeButton(contentFrame, "❌ Kill Script Execution", UDim2.new(0, 260, 0, 32), UDim2.new(0, 5, 0, 100))
         killBtn.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
         killBtn.MouseButton1Click:Connect(function()
-            isAlive = false Config.AntiAFK = false Config.AutoChest = false Config.ChestTracers = false
+            isAlive = false Config.AutoChest = false Config.ChestTracers = false
             local t = workspace:FindFirstChild("ChestTracerBeam") if t then t:Destroy() end
             if pickerConnection then pickerConnection:Disconnect() end screenGui:Destroy()
         end)
@@ -418,6 +456,7 @@ local function renderContent()
             
             local btn = makeButton(contentFrame, "", UDim2.new(0, 180, 0, 30), UDim2.new(0, x, 0, y))
             btn.BackgroundColor3 = up.enabled and Color3.fromRGB(50, 35, 90) or Color3.fromRGB(25, 25, 35)
+            
             if up.enabled then btn.UIStroke.Color = getThemeColor() end
             
             local txt = Instance.new("TextLabel")
@@ -477,7 +516,6 @@ minBtn.MouseButton1Click:Connect(function()
     mainFrame.Size = uiExpanded and UDim2.new(0, 580, 0, 400) or UDim2.new(0, 580, 0, 40)
 end)
 
--- СИНХРОНИЗАТОР НА ЦВЕТОВЕТЕ (ОБНОВЯВА ВСЕКИ КАДЪР АКО Е ПУСНАТ RAINBOW)
 local tracerBeam
 task.spawn(function()
     while isAlive do
@@ -501,43 +539,6 @@ task.spawn(function()
     end
 end)
 
-local pickerEnabled = false
-function onUpgradeScreen(upgrades)
-    if not isAlive or not pickerEnabled or type(upgrades) ~= "table" then return end
-    if Config.SpamDelay > 0 then task.wait(Config.SpamDelay) end
-
-    local bestPick = findBestUpgrade(upgrades)
-    if bestPick then
-        SelectUpgrade:FireServer(bestPick.ID)
-        if pickerTierLabel then pickerTierLabel.Text = "Upgrade: " .. bestPick.ID end
-        if pickerActionLabel then 
-            pickerActionLabel.Text = "Action: Selected ✅"
-            pickerActionLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-        end
-        if pickerLastLabel then pickerLastLabel.Text = "Last: " .. bestPick.ID end
-        return
-    end
-
-    local gold = getGold()
-    local cost = getRerollCost()
-
-    if Config.AutoReroll and cost ~= math.huge and gold >= cost then
-        RerollUpgrade:FireServer()
-        if pickerActionLabel then
-            pickerActionLabel.Text = "Action: Rerolled 🔄"
-            pickerActionLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
-        end
-        if pickerLastLabel then pickerLastLabel.Text = "Last: Rerolled (" .. cost .. "G)" end
-    elseif Config.AutoSkip then
-        SkipUpgrade:FireServer()
-        if pickerActionLabel then
-            pickerActionLabel.Text = "Action: Skipped ⏭️"
-            pickerActionLabel.TextColor3 = Color3.fromRGB(180, 80, 80)
-        end
-        if pickerLastLabel then pickerLastLabel.Text = "Last: Skipped" end
-    end
-end
-
 task.spawn(function()
     while isAlive do
         local gold = getGold()
@@ -546,42 +547,6 @@ task.spawn(function()
             pickerGoldLabel.Text = "Gold: " .. gold .. "  |  Reroll: " .. (cost == math.huge and "?" or cost .. "G")
         end
         task.wait(Config.GoldUpdateInterval)
-    end
-end)
-
-player.Idled:Connect(function()
-    if isAlive and Config.AntiAFK then
-        pcall(function()
-            VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-            task.wait(0.5)
-            VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-        end)
-    end
-end)
-
-task.spawn(function()
-    local ran = Random.new()
-    while true do
-        if isAlive and Config.AntiAFK then
-            pcall(function()
-                local char = player.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local randomAngle = ran:NextNumber(0, math.pi * 2)
-                    local moveDir = Vector3.new(math.cos(randomAngle), 0, math.sin(randomAngle))
-                    local t = 0
-                    while t < 1 and Config.AntiAFK and isAlive and hum.Health > 0 do
-                        hum:Move(moveDir, false) t = t + task.wait()
-                    end
-                    t = 0
-                    while t < 1 and Config.AntiAFKsz and isAlive and hum.Health > 0 do
-                        hum:Move(-moveDir, false) t = t + task.wait()
-                    end
-                end
-            end)
-        else
-            task.wait(0.5)
-        end
     end
 end)
 
@@ -599,9 +564,59 @@ task.spawn(function()
                 end
                 cachedChests = newList
             end)
-            task.wait(2)
+            task.wait(1.5)
         else
             task.wait(0.5)
+        end
+    end
+end)
+
+-- НОВА СИСТЕМА: Насочване на мишката и Двойно Кликване по точните координати на екрана
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if isAlive and Config.AutoChest then
+            pcall(function()
+                for _, v in ipairs(player.PlayerGui:GetDescendants()) do
+                    if v:IsA("GuiObject") and v.Visible then
+                        local isTarget = false
+                        if v:IsA("TextLabel") or v:IsA("TextButton") then
+                            local txt = v.Text:lower()
+                            if txt:find("claim") or txt:find("click to claim") or txt:find("click") or txt:find("open") then
+                                isTarget = true
+                            end
+                        end
+                        if v.Name:lower():find("claim") or v.Name:lower():find("reward") then
+                            isTarget = true
+                        end
+
+                        if isTarget then
+                            local pos = v.AbsolutePosition
+                            local size = v.AbsoluteSize
+                            local inset = GuiService:GetGuiInset()
+                            
+                            -- Пресмятане на абсолютния център на обекта на екрана
+                            local screenX = pos.X + (size.X / 2) + inset.X
+                            local screenY = pos.Y + (size.Y / 2) + inset.Y
+
+                            -- Първи Клик
+                            VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, true, game, 0)
+                            task.wait(0.01)
+                            VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, false, game, 0)
+                            
+                            task.wait(0.03) -- Пауза между кликовете
+                            
+                            -- Втори Клик
+                            VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, true, game, 0)
+                            task.wait(0.01)
+                            VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, false, game, 0)
+                            
+                            task.wait(0.5) -- Защитна пауза след успешно натискане
+                            break
+                        end
+                    end
+                end
+            end)
         end
     end
 end)
@@ -613,7 +628,7 @@ task.spawn(function()
     tracerBeam.Color = ColorSequence.new(getThemeColor())
     tracerBeam.FaceCamera = true tracerBeam.Parent = workspace
 
-    local path = PathfindingService:CreatePath({AgentRadius = 3, AgentHeight = 5, AgentCanJump = true})
+    local path = PathfindingService:CreatePath({AgentRadius = 2, AgentHeight = 5, AgentCanJump = true})
     local currentChest, waypoints, currentWaypointIndex, lastPathTime = nil, {}, 1, 0
 
     while true do
@@ -636,7 +651,7 @@ task.spawn(function()
                     end
                     
                     if closestChest then
-                        if closestChest ~= currentChest or tick() - lastPathTime > 1 then
+                        if closestChest ~= currentChest or tick() - lastPathTime > 0.8 then
                             currentChest = closestChest
                             path:ComputeAsync(hrp.Position, closestChest.Position)
                             if path.Status == Enum.PathStatus.Success then
@@ -656,12 +671,7 @@ task.spawn(function()
 
                             if targetWaypoint then
                                 if targetWaypoint.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-                                local dir = (targetWaypoint.Position - hrp.Position).Unit
-                                local perp = Vector3.new(-dir.Z, 0, dir.X)
-                                local sway = math.sin(tick() * 5) * 1.2
-                                local targetPos = targetWaypoint.Position
-                                if minDist >= 12 then targetPos = targetPos + (perp * sway) end
-                                hum:MoveTo(targetPos)
+                                hum:MoveTo(targetWaypoint.Position)
                             else
                                 hum:MoveTo(closestChest.Position)
                             end
@@ -677,7 +687,7 @@ task.spawn(function()
                             tracerBeam.Enabled = false
                         end
                         
-                        if minDist < 15 then
+                        if minDist < 16 then
                             local prompt = closestChest:FindFirstChildWhichIsA("ProximityPrompt", true) or closestChest.Parent:FindFirstChildWhichIsA("ProximityPrompt", true)
                             if prompt and fireproximityprompt then fireproximityprompt(prompt) end
                             if firetouchinterest then
