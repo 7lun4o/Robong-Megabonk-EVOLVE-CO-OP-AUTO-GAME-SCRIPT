@@ -43,7 +43,8 @@ local tierWeights = {
     voltzone = 4, meteor = 4, lumenblade = 4,
     sunaura = 3, curse = 3, wisdom = 3, criticalchance = 3,
     spinningcat = 2, shadoworbit = 2, shuriken = 2, mudbreaker = 2, regeneration = 2, criticaldamage = 2, vampirism = 2,
-    bullet = 1, hammer = 1, vitality = 1, fireorb = 1, power = 1, teslacoil = 1, magnet = 1, viberod = 1, agility = 1
+    bullet = 1, hammer = 1, vitality = 1, fireorb = 1, power = 1, teslacoil = 1, magnet = 1, viberod = 1, agility = 1,
+    limitbreakspeed = 5, limitbreakpower = 5, gemstash = 5 -- Висок приоритет за новите Limit Break
 }
 
 local Events = ReplicatedStorage:WaitForChild("Events", 10)
@@ -100,16 +101,22 @@ local upgradesConfig = {
         { id = "InfernalMeteor",  label = "Infernal Meteor",  enabled = true, icon = "" },
         { id = "HellSlash",       label = "Hell Slash",       enabled = true, icon = "" },
         { id = "Eclipse",         label = "Eclipse",          enabled = true, icon = "" },
+    },
+    limitBreak = {
+        { id = "LimitBreakSpeed", label = "Limit Break: Speed", enabled = true, icon = "" },
+        { id = "LimitBreakPower", label = "Limit Break: Power", enabled = true, icon = "" },
+        { id = "GemStash",        label = "Gem Stash",           enabled = true, icon = "" },
     }
 }
 
 local mainStroke, divider, contentFrame
 
 local function saveLocalConfig()
-    local data = {Config = Config, Weapons = {}, Perks = {}, Evolves = {}}
+    local data = {Config = Config, Weapons = {}, Perks = {}, Evolves = {}, LimitBreak = {}}
     for _, v in ipairs(upgradesConfig.weapons) do data.Weapons[v.id] = v.enabled end
     for _, v in ipairs(upgradesConfig.perks) do data.Perks[v.id] = v.enabled end
     for _, v in ipairs(upgradesConfig.evolves) do data.Evolves[v.id] = v.enabled end
+    for _, v in ipairs(upgradesConfig.limitBreak) do data.LimitBreak[v.id] = v.enabled end
     pcall(function()
         if writefile then writefile(FILE_NAME, HttpService:JSONEncode(data)) end
     end)
@@ -137,6 +144,11 @@ local function loadLocalConfig()
         if data.Evolves then
             for _, v in ipairs(upgradesConfig.evolves) do
                 if data.Evolves[v.id] ~= nil then v.enabled = data.Evolves[v.id] end
+            end
+        end
+        if data.LimitBreak then
+            for _, v in ipairs(upgradesConfig.limitBreak) do
+                if data.LimitBreak[v.id] ~= nil then v.enabled = data.LimitBreak[v.id] end
             end
         end
         return true
@@ -475,12 +487,13 @@ local function renderContent()
 end
 
 local tabs = {
-    { id = "status",   label = "📊 Main Status" },
-    { id = "weapons",  label = "⚔️ Weapons Select" },
-    { id = "perks",    label = "✨ Perks Select" },
-    { id = "evolves",  label = "🔥 Evolve Select" },
-    { id = "themes",   label = "🎨 UI Themes" },
-    { id = "config",   label = "⚙️ Script Config" }
+    { id = "status",     label = "📊 Main Status" },
+    { id = "weapons",    label = "⚔️ Weapons Select" },
+    { id = "perks",      label = "✨ Perks Select" },
+    { id = "evolves",    label = "🔥 Evolve Select" },
+    { id = "limitBreak", label = "⚡ Limit Break" },
+    { id = "themes",     label = "🎨 UI Themes" },
+    { id = "config",     label = "⚙️ Script Config" }
 }
 
 local tabButtons = {}
@@ -571,7 +584,6 @@ task.spawn(function()
     end
 end)
 
--- НОВА СИСТЕМА: Насочване на мишката и Двойно Кликване по точните координати на екрана
 task.spawn(function()
     while true do
         task.wait(0.1)
@@ -595,23 +607,20 @@ task.spawn(function()
                             local size = v.AbsoluteSize
                             local inset = GuiService:GetGuiInset()
                             
-                            -- Пресмятане на абсолютния център на обекта на екрана
                             local screenX = pos.X + (size.X / 2) + inset.X
                             local screenY = pos.Y + (size.Y / 2) + inset.Y
 
-                            -- Първи Клик
                             VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, true, game, 0)
                             task.wait(0.01)
                             VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, false, game, 0)
                             
-                            task.wait(0.03) -- Пауза между кликовете
+                            task.wait(0.03)
                             
-                            -- Втори Клик
                             VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, true, game, 0)
                             task.wait(0.01)
                             VirtualInputManager:SendMouseButtonEvent(screenX, screenY, 0, false, game, 0)
                             
-                            task.wait(0.5) -- Защитна пауза след успешно натискане
+                            task.wait(0.5)
                             break
                         end
                     end
