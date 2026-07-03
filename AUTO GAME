@@ -7,6 +7,8 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local isAlive = true
 local FILE_NAME = "picker_user_config.json"
+local pickerEnabled = false
+local pickerConnection
 
 local Config = {
     SpamDelay = 0.1,
@@ -299,7 +301,7 @@ local function renderContent()
     if activeTab == "status" then
         contentFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
         
-        pickerStatusLabel = makeLabel(contentFrame, "Status: OFF", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 5), Color3.fromRGB(200, 200, 200), 14)
+        pickerStatusLabel = makeLabel(contentFrame, pickerEnabled and "Status: ON" or "Status: OFF", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 5), pickerEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(200, 200, 200), 14)
         pickerTierLabel   = makeLabel(contentFrame, "Upgrade: —", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 30), Color3.fromRGB(255, 255, 255), 14)
         pickerActionLabel = makeLabel(contentFrame, "Action: Waiting...", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
         pickerLastLabel   = makeLabel(contentFrame, "Last picked: None", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 80), Color3.fromRGB(140, 140, 140), 13)
@@ -315,7 +317,7 @@ local function renderContent()
             pickerBtn.BackgroundColor3 = pickerEnabled and Color3.fromRGB(150, 40, 40) or colors[Config.ColorIndex].color
             pickerStatusLabel.Text = pickerEnabled and "Status: ON" or "Status: OFF"
             pickerStatusLabel.TextColor3 = pickerEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(200, 200, 200)
-            
+             
             if pickerEnabled then
                 if not pickerConnection then pickerConnection = ShowUpgradeScreen.OnClientEvent:Connect(onUpgradeScreen) end
             else
@@ -327,6 +329,7 @@ local function renderContent()
             local lbl = makeLabel(contentFrame, text, UDim2.new(0, 150, 0, 25), UDim2.new(0, 5, 0, yPos), Color3.fromRGB(255, 255, 255), 13)
             local btn = makeButton(contentFrame, Config[field] and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 240, 0, yPos))
             btn.BackgroundColor3 = Config[field] and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+         
             btn.MouseButton1Click:Connect(function()
                 Config[field] = not Config[field]
                 btn.Text = Config[field] and "ON" or "OFF"
@@ -341,9 +344,9 @@ local function renderContent()
         makeConfigToggle("Chest Tracers", "ChestTracers", 310)
 
     elseif activeTab == "themes" then
-        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 260)
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
         
-        -- RAINBOW СТАНДАРТНА ОПЦИЯ (С ПРИОРИТЕТ)
+        -- RAINBOW ОПЦИЯ
         local rbLbl = makeLabel(contentFrame, "🌈 Rainbow Mode (Priority)", UDim2.new(0, 180, 0, 25), UDim2.new(0, 5, 0, 10), Color3.fromRGB(255, 255, 255), 13)
         local rbBtn = makeButton(contentFrame, Config.Rainbow and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 190, 0, 10))
         rbBtn.BackgroundColor3 = Config.Rainbow and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
@@ -353,38 +356,50 @@ local function renderContent()
             rbBtn.BackgroundColor3 = Config.Rainbow and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
         end)
 
-        local line = Instance.new("Frame")
-        line.Size = UDim2.new(1, -10, 0, 1)
-        line.Position = UDim2.new(0, 5, 0, 45)
-        line.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-        line.BorderSizePixel = 0
-        line.Parent = contentFrame
-
-        makeLabel(contentFrame, "🎨 Select Theme Color:", UDim2.new(1, 0, 0, 20), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
-
-        -- ТАБЛИЦА С ЦВЕТОВЕ
-        for i, cData in ipairs(colors) do
-            local x = (i - 1) % 2 == 0 and 5 or 195
-            local y = math.floor((i - 1) / 2) * 35 + 80
-
-            local cBtn = makeButton(contentFrame, cData.name, UDim2.new(0, 180, 0, 30), UDim2.new(0, x, 0, y))
-            cBtn.BackgroundColor3 = cData.color
-            
-            if Config.ColorIndex == i then
-                cBtn.UIStroke.Color = Color3.fromRGB(255, 255, 255)
-                cBtn.UIStroke.Thickness = 2
-            else
-                cBtn.UIStroke.Color = Color3.fromRGB(24, 24, 37)
-                cBtn.UIStroke.Thickness = 1
-            end
-
-            cBtn.MouseButton1Click:Connect(function()
-                if not Config.Rainbow then
-                    Config.ColorIndex = i
-                    renderContent()
-                end
-            end)
+        -- COLOR WHEEL (HUE SLIDER)
+        makeLabel(contentFrame, "🎡 Custom Color Wheel (Hue):", UDim2.new(1, 0, 0, 20), UDim2.new(0, 5, 0, 45), Color3.fromRGB(180, 180, 180), 13)
+        
+        local sliderBg = Instance.new("Frame")
+        sliderBg.Size = UDim2.new(1, -20, 0, 12)
+        sliderBg.Position = UDim2.new(0, 5, 0, 70)
+        sliderBg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        sliderBg.BorderSizePixel = 0
+        sliderBg.Parent = contentFrame
+        
+        local grad = Instance.new("UIGradient")
+        local seq = {}
+        for i = 0, 6 do
+            table.insert(seq, ColorSequenceKeypoint.new(i/6, Color3.fromHSV(i/6, 1, 1)))
         end
+        grad.Color = ColorSequence.new(seq)
+        grad.Parent = sliderBg
+        
+        local sliderBtn = Instance.new("TextButton")
+        sliderBtn.Size = UDim2.new(0, 8, 1, 4)
+        sliderBtn.Position = UDim2.new(0.5, -4, 0, -2)
+        sliderBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        sliderBtn.Text = ""
+        sliderBtn.Parent = sliderBg
+        
+        local function updateSlider(input)
+            if Config.Rainbow then return end
+            local posX = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            sliderBtn.Position = UDim2.new(posX, -4, 0, -2)
+            local customColor = Color3.fromHSV(posX, 0.8, 1)
+            colors[7] = {name = "Custom", color = customColor}
+            Config.ColorIndex = 7
+        end
+        
+        local dragging = false
+        sliderBg.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true updateSlider(input) end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then updateSlider(input) end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
 
     elseif activeTab == "config" then
         contentFrame.CanvasSize = UDim2.new(0, 0, 0, 160)
@@ -418,6 +433,7 @@ local function renderContent()
             
             local btn = makeButton(contentFrame, "", UDim2.new(0, 180, 0, 30), UDim2.new(0, x, 0, y))
             btn.BackgroundColor3 = up.enabled and Color3.fromRGB(50, 35, 90) or Color3.fromRGB(25, 25, 35)
+            
             if up.enabled then btn.UIStroke.Color = getThemeColor() end
             
             local txt = Instance.new("TextLabel")
@@ -477,7 +493,7 @@ minBtn.MouseButton1Click:Connect(function()
     mainFrame.Size = uiExpanded and UDim2.new(0, 580, 0, 400) or UDim2.new(0, 580, 0, 40)
 end)
 
--- СИНХРОНИЗАТОР НА ЦВЕТОВЕТЕ (ОБНОВЯВА ВСЕКИ КАДЪР АКО Е ПУСНАТ RAINBOW)
+-- СИНХРОНИЗАТОР НА ЦВЕТОВЕТЕ
 local tracerBeam
 task.spawn(function()
     while isAlive do
@@ -501,7 +517,6 @@ task.spawn(function()
     end
 end)
 
-local pickerEnabled = false
 function onUpgradeScreen(upgrades)
     if not isAlive or not pickerEnabled or type(upgrades) ~= "table" then return end
     if Config.SpamDelay > 0 then task.wait(Config.SpamDelay) end
@@ -574,7 +589,7 @@ task.spawn(function()
                         hum:Move(moveDir, false) t = t + task.wait()
                     end
                     t = 0
-                    while t < 1 and Config.AntiAFKsz and isAlive and hum.Health > 0 do
+                    while t < 1 and Config.AntiAFK and isAlive and hum.Health > 0 do
                         hum:Move(-moveDir, false) t = t + task.wait()
                     end
                 end
