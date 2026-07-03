@@ -1,0 +1,1 @@
+Auto Game is an advanced automation script designed to optimize your gameplay experience. It features intelligent upgrade selection, automated chest farming, and a fully customizable UI with multiple themes. It ensures smooth performance and provides complete control over your in-game resources for maximum efficiency.
