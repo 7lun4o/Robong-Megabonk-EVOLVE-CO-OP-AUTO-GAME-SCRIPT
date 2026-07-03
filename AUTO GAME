@@ -1,0 +1,696 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
+local PathfindingService = game:GetService("PathfindingService")
+
+local isAlive = true
+local FILE_NAME = "picker_user_config.json"
+
+local Config = {
+    SpamDelay = 0.1,
+    GoldUpdateInterval = 0.5,
+    AutoReroll = true,
+    AutoSkip = true,
+    AntiAFK = false,
+    AutoChest = false,
+    ChestTracers = false,
+    MaxChestDistance = 500,
+    Rainbow = false,
+    ColorIndex = 1,
+    DefaultIcon = "rbxassetid://10842011785"
+}
+
+local colors = {
+    {name = "Purple", color = Color3.fromRGB(150, 100, 255)},
+    {name = "Red", color = Color3.fromRGB(255, 75, 75)},
+    {name = "Blue", color = Color3.fromRGB(75, 150, 255)},
+    {name = "Green", color = Color3.fromRGB(75, 255, 75)},
+    {name = "Cyan", color = Color3.fromRGB(75, 255, 255)},
+    {name = "Orange", color = Color3.fromRGB(255, 150, 50)}
+}
+
+local function getThemeColor()
+    if Config.Rainbow then
+        return Color3.fromHSV((tick() % 4) / 4, 0.8, 1)
+    end
+    return colors[Config.ColorIndex] and colors[Config.ColorIndex].color or Color3.fromRGB(150, 100, 255)
+end
+
+local tierWeights = {
+    voltzone = 4, meteor = 4, lumenblade = 4,
+    sunaura = 3, curse = 3, wisdom = 3, criticalchance = 3,
+    spinningcat = 2, shadoworbit = 2, shuriken = 2, mudbreaker = 2, regeneration = 2, criticaldamage = 2, vampirism = 2,
+    bullet = 1, hammer = 1, vitality = 1, fireorb = 1, power = 1, teslacoil = 1, magnet = 1, viberod = 1, agility = 1
+}
+
+local Events = ReplicatedStorage:WaitForChild("Events", 10)
+local ShowUpgradeScreen = Events:WaitForChild("ShowUpgradeScreen", 10)
+local SelectUpgrade = Events:WaitForChild("SelectUpgrade", 10)
+local RerollUpgrade = Events:WaitForChild("RerollUpgrade", 10)
+local SkipUpgrade = Events:WaitForChild("SkipUpgrade", 10)
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+local upgradesConfig = {
+    perks = {
+        { id = "Magnet",          label = "Magnet",           enabled = true, icon = "" },
+        { id = "Power",           label = "Power",            enabled = true, icon = "" },
+        { id = "Vitality",        label = "Vitality",         enabled = true, icon = "" },
+        { id = "Agility",         label = "Agility",          enabled = true, icon = "" },
+        { id = "CriticalDamage",  label = "Crit Damage",      enabled = true, icon = "" },
+        { id = "Regeneration",    label = "Regeneration",     enabled = true, icon = "" },
+        { id = "Curse",           label = "Curse",            enabled = true, icon = "" },
+        { id = "CriticalChance",  label = "Crit Chance",      enabled = true, icon = "" },
+        { id = "Wisdom",          label = "Wisdom",           enabled = true, icon = "" },
+        { id = "Vampirism",       label = "Vampirism",        enabled = true, icon = "" },
+        { id = "InfinitePower",   label = "Infinite Power",   enabled = true, icon = "" },
+        { id = "InfiniteHaste",   label = "Infinite Haste",   enabled = true, icon = "" },
+        { id = "XPMultiplier",    label = "XP Multiplier",    enabled = true, icon = "" },
+        { id = "CursedSkull",     label = "Cursed Skull",     enabled = true, icon = "" },
+        { id = "MaxHealth",       label = "Max Health",       enabled = true, icon = "" },
+        { id = "DamageMultiplier",label = "Damage Mult.",     enabled = true, icon = "" },
+    },
+    weapons = {
+        { id = "ShadowOrbit",     label = "Shadow Orbit",     enabled = true, icon = "" },
+        { id = "HolyWater",       label = "Holy Water",       enabled = true, icon = "" },
+        { id = "VoiceAmplifier",  label = "Voice Amp",        enabled = true, icon = "" },
+        { id = "Meteor",          label = "Meteor",           enabled = true, icon = "" },
+        { id = "LumenBlade",      label = "Lumen Blade",      enabled = true, icon = "" },
+        { id = "VoltZone",        label = "Volt Zone",        enabled = true, icon = "" },
+        { id = "Bullet",          label = "Bullet",           enabled = true, icon = "" },
+        { id = "TeslaCoil",       label = "Tesla Coil",       enabled = true, icon = "" },
+        { id = "Shuriken",        label = "Shuriken",         enabled = true, icon = "" },
+        { id = "Hammer",          label = "Hammer",           enabled = true, icon = "" },
+        { id = "SunAura",         label = "Sun Aura",         enabled = true, icon = "" },
+        { id = "VibeRod",         label = "Vibe Rod",         enabled = true, icon = "" },
+        { id = "SpinningCat",     label = "Spinning Cat",     enabled = true, icon = "" },
+        { id = "FireOrb",         label = "Fire Orb",         enabled = true, icon = "" },
+        { id = "MudBreaker",      label = "Mud Breaker",      enabled = true, icon = "" },
+    },
+    evolves = {
+        { id = "DoomEcho",        label = "Doom Echo",        enabled = true, icon = "" },
+        { id = "Supernova",       label = "Supernova",        enabled = true, icon = "" },
+        { id = "FaradayTrap",     label = "Faraday Trap",     enabled = true, icon = "" },
+        { id = "ThunderHammer",   label = "Thunder Hammer",   enabled = true, icon = "" },
+        { id = "BallLightning",   label = "Ball Lightning",   enabled = true, icon = "" },
+        { id = "InfernalMeteor",  label = "Infernal Meteor",  enabled = true, icon = "" },
+        { id = "HellSlash",       label = "Hell Slash",       enabled = true, icon = "" },
+        { id = "Eclipse",         label = "Eclipse",          enabled = true, icon = "" },
+    }
+}
+
+local mainStroke, divider, contentFrame
+
+local function saveLocalConfig()
+    local data = {Config = Config, Weapons = {}, Perks = {}, Evolves = {}}
+    for _, v in ipairs(upgradesConfig.weapons) do data.Weapons[v.id] = v.enabled end
+    for _, v in ipairs(upgradesConfig.perks) do data.Perks[v.id] = v.enabled end
+    for _, v in ipairs(upgradesConfig.evolves) do data.Evolves[v.id] = v.enabled end
+    pcall(function()
+        if writefile then writefile(FILE_NAME, HttpService:JSONEncode(data)) end
+    end)
+end
+
+local function loadLocalConfig()
+    local data
+    pcall(function()
+        if readfile and isfile and isfile(FILE_NAME) then
+            data = HttpService:JSONDecode(readfile(FILE_NAME))
+        end
+    end)
+    if data then
+        if data.Config then for k, v in pairs(data.Config) do Config[k] = v end end
+        if data.Weapons then
+            for _, v in ipairs(upgradesConfig.weapons) do
+                if data.Weapons[v.id] ~= nil then v.enabled = data.Weapons[v.id] end
+            end
+        end
+        if data.Perks then
+            for _, v in ipairs(upgradesConfig.perks) do
+                if data.Perks[v.id] ~= nil then v.enabled = data.Perks[v.id] end
+            end
+        end
+        if data.Evolves then
+            for _, v in ipairs(upgradesConfig.evolves) do
+                if data.Evolves[v.id] ~= nil then v.enabled = data.Evolves[v.id] end
+            end
+        end
+        return true
+    end
+    return false
+end
+
+local function isUpgradeEnabled(id)
+    if not id then return false end
+    id = id:lower()
+    for _, cat in pairs(upgradesConfig) do
+        for _, up in ipairs(cat) do
+            if up.id:lower() == id or id:find(up.id:lower()) then return up.enabled end
+        end
+    end
+    return false
+end
+
+local function isEvolution(id)
+    id = id:lower()
+    for _, up in ipairs(upgradesConfig.evolves) do
+        if up.id:lower() == id or id:find(up.id:lower()) then return true end
+    end
+    return false
+end
+
+local function findBestUpgrade(upgrades)
+    local matches = {}
+    for _, upgrade in ipairs(upgrades) do
+        if type(upgrade) == "table" and upgrade.ID and isUpgradeEnabled(upgrade.ID) then 
+            table.insert(matches, upgrade) 
+        end
+    end
+    table.sort(matches, function(a, b)
+        local aId = a.ID:lower()
+        local bId = b.ID:lower()
+        local aPriority = isEvolution(aId) and 5 or (tierWeights[aId] or 0)
+        local bPriority = isEvolution(bId) and 5 or (tierWeights[bId] or 0)
+        if aPriority ~= bPriority then return aPriority > bPriority end
+        return (a.Level or 0) < (b.Level or 0)
+    end)
+    return matches[1]
+end
+
+local function getGold()
+    local ok, val = pcall(function() return player.leaderstats.Gold.Value end)
+    return ok and val or 0
+end
+
+local function getRerollCost()
+    local ok, label = pcall(function() return player.PlayerGui.UpgradeScreen.MainContainer.Footer.RollButton.TextLabel.Text end)
+    if not ok then return math.huge end
+    local numStr = label:match("%d+")
+    return numStr and tonumber(numStr) or math.huge
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "PremiumMasterGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 580, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -290, 0.5, -200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 37)
+mainFrame.BackgroundTransparency = 0.05
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 14)
+mainCorner.Parent = mainFrame
+
+mainStroke = Instance.new("UIStroke")
+mainStroke.Color = getThemeColor()
+mainStroke.Thickness = 1.5
+mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+mainStroke.Parent = mainFrame
+
+local windowTitle = Instance.new("TextLabel")
+windowTitle.Size = UDim2.new(0, 200, 0, 40)
+windowTitle.Position = UDim2.new(0, 20, 0, 10)
+windowTitle.BackgroundTransparency = 1
+windowTitle.Text = "Auto Game"
+windowTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+windowTitle.TextSize = 16
+windowTitle.Font = Enum.Font.GothamBold
+windowTitle.TextXAlignment = Enum.TextXAlignment.Left
+windowTitle.Parent = mainFrame
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 30, 0, 30)
+minBtn.Position = UDim2.new(1, -40, 0, 10)
+minBtn.BackgroundTransparency = 1
+minBtn.Text = "—"
+minBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
+minBtn.TextSize = 16
+minBtn.Font = Enum.Font.GothamBold
+minBtn.Parent = mainFrame
+
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, 140, 1, -70)
+sidebar.Position = UDim2.new(0, 15, 0, 55)
+sidebar.BackgroundTransparency = 1
+sidebar.Parent = mainFrame
+
+divider = Instance.new("Frame")
+divider.Size = UDim2.new(0, 1, 1, -75)
+divider.Position = UDim2.new(0, 165, 0, 55)
+divider.BackgroundColor3 = getThemeColor()
+divider.BackgroundTransparency = 0.5
+divider.BorderSizePixel = 0
+divider.Parent = mainFrame
+
+contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Size = UDim2.new(1, -190, 1, -70)
+contentFrame.Position = UDim2.new(0, 180, 0, 55)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 4
+contentFrame.ScrollBarImageColor3 = getThemeColor()
+contentFrame.Parent = mainFrame
+
+local creditsLabel = Instance.new("TextLabel")
+creditsLabel.Size = UDim2.new(0, 120, 0, 20)
+creditsLabel.Position = UDim2.new(0, 15, 1, -25)
+creditsLabel.BackgroundTransparency = 1
+creditsLabel.Text = "Premium Hub"
+creditsLabel.TextColor3 = Color3.fromRGB(100, 80, 180)
+creditsLabel.TextSize = 11
+creditsLabel.Font = Enum.Font.GothamMedium
+creditsLabel.TextXAlignment = Enum.TextXAlignment.Left
+creditsLabel.Parent = mainFrame
+
+local pickerStatusLabel, pickerTierLabel, pickerActionLabel, pickerLastLabel, pickerGoldLabel, pickerBtn
+local activeTab = "status"
+
+local function makeLabel(parent, text, size, pos, color, fontSize)
+    local l = Instance.new("TextLabel")
+    l.Size = size l.Position = pos l.BackgroundTransparency = 1
+    l.Text = text l.TextColor3 = color or Color3.fromRGB(220, 220, 220)
+    l.TextSize = fontSize or 13 l.Font = Enum.Font.GothamMedium l.TextWrapped = true l.TextXAlignment = Enum.TextXAlignment.Left l.Parent = parent
+    return l
+end
+
+local function makeButton(parent, text, size, pos)
+    local b = Instance.new("TextButton")
+    b.Size = size b.Position = pos b.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    b.BorderSizePixel = 0 b.Text = text b.TextColor3 = Color3.fromRGB(255, 255, 255) b.TextSize = 12
+    b.Font = Enum.Font.GothamBold b.Parent = parent
+    local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = b
+    local s = Instance.new("UIStroke") s.Color = Color3.fromRGB(60, 60, 80) s.Thickness = 1 s.Parent = b
+    return b
+end
+
+local function renderContent()
+    contentFrame:ClearAllChildren()
+    
+    if activeTab == "status" then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
+        
+        pickerStatusLabel = makeLabel(contentFrame, "Status: OFF", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 5), Color3.fromRGB(200, 200, 200), 14)
+        pickerTierLabel   = makeLabel(contentFrame, "Upgrade: —", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 30), Color3.fromRGB(255, 255, 255), 14)
+        pickerActionLabel = makeLabel(contentFrame, "Action: Waiting...", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
+        pickerLastLabel   = makeLabel(contentFrame, "Last picked: None", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 80), Color3.fromRGB(140, 140, 140), 13)
+        pickerGoldLabel   = makeLabel(contentFrame, "Gold: 0  |  Reroll: ?", UDim2.new(1, 0, 0, 22), UDim2.new(0, 5, 0, 105), Color3.fromRGB(255, 200, 0), 13)
+        
+        pickerBtn = makeButton(contentFrame, pickerEnabled and "Disable Auto Picker" or "Enable Auto Picker", UDim2.new(0, 220, 0, 32), UDim2.new(0, 5, 0, 140))
+        pickerBtn.BackgroundColor3 = pickerEnabled and Color3.fromRGB(150, 40, 40) or colors[Config.ColorIndex].color
+        
+        pickerBtn.MouseButton1Click:Connect(function()
+            if not isAlive then return end
+            pickerEnabled = not pickerEnabled
+            pickerBtn.Text = pickerEnabled and "Disable Auto Picker" or "Enable Auto Picker"
+            pickerBtn.BackgroundColor3 = pickerEnabled and Color3.fromRGB(150, 40, 40) or colors[Config.ColorIndex].color
+            pickerStatusLabel.Text = pickerEnabled and "Status: ON" or "Status: OFF"
+            pickerStatusLabel.TextColor3 = pickerEnabled and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(200, 200, 200)
+            
+            if pickerEnabled then
+                if not pickerConnection then pickerConnection = ShowUpgradeScreen.OnClientEvent:Connect(onUpgradeScreen) end
+            else
+                if pickerConnection then pickerConnection:Disconnect() pickerConnection = nil end
+            end
+        end)
+
+        local function makeConfigToggle(text, field, yPos)
+            local lbl = makeLabel(contentFrame, text, UDim2.new(0, 150, 0, 25), UDim2.new(0, 5, 0, yPos), Color3.fromRGB(255, 255, 255), 13)
+            local btn = makeButton(contentFrame, Config[field] and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 240, 0, yPos))
+            btn.BackgroundColor3 = Config[field] and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+            btn.MouseButton1Click:Connect(function()
+                Config[field] = not Config[field]
+                btn.Text = Config[field] and "ON" or "OFF"
+                btn.BackgroundColor3 = Config[field] and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+            end)
+        end
+
+        makeConfigToggle("Auto Reroll", "AutoReroll", 190)
+        makeConfigToggle("Auto Skip", "AutoSkip", 220)
+        makeConfigToggle("Anti-AFK", "AntiAFK", 250)
+        makeConfigToggle("Auto Chest Farm", "AutoChest", 280)
+        makeConfigToggle("Chest Tracers", "ChestTracers", 310)
+
+    elseif activeTab == "themes" then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 260)
+        
+        -- RAINBOW СТАНДАРТНА ОПЦИЯ (С ПРИОРИТЕТ)
+        local rbLbl = makeLabel(contentFrame, "🌈 Rainbow Mode (Priority)", UDim2.new(0, 180, 0, 25), UDim2.new(0, 5, 0, 10), Color3.fromRGB(255, 255, 255), 13)
+        local rbBtn = makeButton(contentFrame, Config.Rainbow and "ON" or "OFF", UDim2.new(0, 60, 0, 24), UDim2.new(0, 190, 0, 10))
+        rbBtn.BackgroundColor3 = Config.Rainbow and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+        rbBtn.MouseButton1Click:Connect(function()
+            Config.Rainbow = not Config.Rainbow
+            rbBtn.Text = Config.Rainbow and "ON" or "OFF"
+            rbBtn.BackgroundColor3 = Config.Rainbow and Color3.fromRGB(35, 130, 60) or Color3.fromRGB(120, 40, 40)
+        end)
+
+        local line = Instance.new("Frame")
+        line.Size = UDim2.new(1, -10, 0, 1)
+        line.Position = UDim2.new(0, 5, 0, 45)
+        line.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+        line.BorderSizePixel = 0
+        line.Parent = contentFrame
+
+        makeLabel(contentFrame, "🎨 Select Theme Color:", UDim2.new(1, 0, 0, 20), UDim2.new(0, 5, 0, 55), Color3.fromRGB(180, 180, 180), 13)
+
+        -- ТАБЛИЦА С ЦВЕТОВЕ
+        for i, cData in ipairs(colors) do
+            local x = (i - 1) % 2 == 0 and 5 or 195
+            local y = math.floor((i - 1) / 2) * 35 + 80
+
+            local cBtn = makeButton(contentFrame, cData.name, UDim2.new(0, 180, 0, 30), UDim2.new(0, x, 0, y))
+            cBtn.BackgroundColor3 = cData.color
+            
+            if Config.ColorIndex == i then
+                cBtn.UIStroke.Color = Color3.fromRGB(255, 255, 255)
+                cBtn.UIStroke.Thickness = 2
+            else
+                cBtn.UIStroke.Color = Color3.fromRGB(24, 24, 37)
+                cBtn.UIStroke.Thickness = 1
+            end
+
+            cBtn.MouseButton1Click:Connect(function()
+                if not Config.Rainbow then
+                    Config.ColorIndex = i
+                    renderContent()
+                end
+            end)
+        end
+
+    elseif activeTab == "config" then
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 160)
+        local btnSave = makeButton(contentFrame, "💾 Save Configuration", UDim2.new(0, 260, 0, 32), UDim2.new(0, 5, 0, 10))
+        btnSave.BackgroundColor3 = Color3.fromRGB(40, 80, 140)
+        btnSave.MouseButton1Click:Connect(function()
+            saveLocalConfig() btnSave.Text = "Saved Successfully! ✅" task.wait(1) btnSave.Text = "💾 Save Configuration"
+        end)
+
+        local btnLoad = makeButton(contentFrame, "📂 Load Configuration", UDim2.new(0, 260, 0, 32), UDim2.new(0, 5, 0, 50))
+        btnLoad.BackgroundColor3 = Color3.fromRGB(140, 90, 40)
+        btnLoad.MouseButton1Click:Connect(function()
+            if loadLocalConfig() then btnLoad.Text = "Loaded Successfully! ✅" else btnLoad.Text = "No Config Found ❌" end
+            task.wait(1) btnLoad.Text = "📂 Load Configuration"
+        end)
+        
+        local killBtn = makeButton(contentFrame, "❌ Kill Script Execution", UDim2.new(0, 260, 0, 32), UDim2.new(0, 5, 0, 100))
+        killBtn.BackgroundColor3 = Color3.fromRGB(150, 30, 30)
+        killBtn.MouseButton1Click:Connect(function()
+            isAlive = false Config.AntiAFK = false Config.AutoChest = false Config.ChestTracers = false
+            local t = workspace:FindFirstChild("ChestTracerBeam") if t then t:Destroy() end
+            if pickerConnection then pickerConnection:Disconnect() end screenGui:Destroy()
+        end)
+    else
+        local list = upgradesConfig[activeTab]
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, math.ceil(#list / 2) * 35 + 10)
+        
+        for i, up in ipairs(list) do
+            local x = (i - 1) % 2 == 0 and 5 or 195
+            local y = math.floor((i - 1) / 2) * 35 + 5
+            
+            local btn = makeButton(contentFrame, "", UDim2.new(0, 180, 0, 30), UDim2.new(0, x, 0, y))
+            btn.BackgroundColor3 = up.enabled and Color3.fromRGB(50, 35, 90) or Color3.fromRGB(25, 25, 35)
+            if up.enabled then btn.UIStroke.Color = getThemeColor() end
+            
+            local txt = Instance.new("TextLabel")
+            txt.Size = UDim2.new(1, -10, 1, 0) txt.Position = UDim2.new(0, 10, 0, 0) txt.BackgroundTransparency = 1
+            txt.Text = (up.enabled and "● " or "○ ") .. up.label txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+            txt.TextSize = 11 txt.Font = Enum.Font.GothamBold txt.TextXAlignment = Enum.TextXAlignment.Left txt.Parent = btn
+            
+            btn.MouseButton1Click:Connect(function()
+                up.enabled = not up.enabled
+                txt.Text = (up.enabled and "● " or "○ ") .. up.label
+                btn.BackgroundColor3 = up.enabled and Color3.fromRGB(50, 35, 90) or Color3.fromRGB(25, 25, 35)
+                btn.UIStroke.Color = up.enabled and getThemeColor() or Color3.fromRGB(60, 60, 80)
+            end)
+        end
+    end
+end
+
+local tabs = {
+    { id = "status",   label = "📊 Main Status" },
+    { id = "weapons",  label = "⚔️ Weapons Select" },
+    { id = "perks",    label = "✨ Perks Select" },
+    { id = "evolves",  label = "🔥 Evolve Select" },
+    { id = "themes",   label = "🎨 UI Themes" },
+    { id = "config",   label = "⚙️ Script Config" }
+}
+
+local tabButtons = {}
+for i, tab in ipairs(tabs) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 35)
+    btn.Position = UDim2.new(0, 0, 0, (i - 1) * 40)
+    btn.BackgroundTransparency = 1
+    btn.Text = tab.label
+    btn.TextColor3 = Color3.fromRGB(160, 160, 180)
+    btn.TextSize = 13
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = sidebar
+    
+    tabButtons[tab.id] = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        activeTab = tab.id
+        renderContent()
+    end)
+end
+
+renderContent()
+
+local uiExpanded = true
+minBtn.MouseButton1Click:Connect(function()
+    uiExpanded = not uiExpanded
+    sidebar.Visible = uiExpanded
+    divider.Visible = uiExpanded
+    contentFrame.Visible = uiExpanded
+    creditsLabel.Visible = uiExpanded
+    mainFrame.Size = uiExpanded and UDim2.new(0, 580, 0, 400) or UDim2.new(0, 580, 0, 40)
+end)
+
+-- СИНХРОНИЗАТОР НА ЦВЕТОВЕТЕ (ОБНОВЯВА ВСЕКИ КАДЪР АКО Е ПУСНАТ RAINBOW)
+local tracerBeam
+task.spawn(function()
+    while isAlive do
+        local currentThemeColor = getThemeColor()
+        
+        if mainStroke and mainStroke.Parent then mainStroke.Color = currentThemeColor end
+        if divider and divider.Parent then divider.BackgroundColor3 = currentThemeColor end
+        if contentFrame and contentFrame.Parent then contentFrame.ScrollBarImageColor3 = currentThemeColor end
+        if tracerBeam then tracerBeam.Color = ColorSequence.new(currentThemeColor) end
+        
+        for id, button in pairs(tabButtons) do
+            if id == activeTab then
+                button.TextColor3 = currentThemeColor
+                button.Font = Enum.Font.GothamBold
+            else
+                button.TextColor3 = Color3.fromRGB(160, 160, 180)
+                button.Font = Enum.Font.GothamMedium
+            end
+        end
+        task.wait()
+    end
+end)
+
+local pickerEnabled = false
+function onUpgradeScreen(upgrades)
+    if not isAlive or not pickerEnabled or type(upgrades) ~= "table" then return end
+    if Config.SpamDelay > 0 then task.wait(Config.SpamDelay) end
+
+    local bestPick = findBestUpgrade(upgrades)
+    if bestPick then
+        SelectUpgrade:FireServer(bestPick.ID)
+        if pickerTierLabel then pickerTierLabel.Text = "Upgrade: " .. bestPick.ID end
+        if pickerActionLabel then 
+            pickerActionLabel.Text = "Action: Selected ✅"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: " .. bestPick.ID end
+        return
+    end
+
+    local gold = getGold()
+    local cost = getRerollCost()
+
+    if Config.AutoReroll and cost ~= math.huge and gold >= cost then
+        RerollUpgrade:FireServer()
+        if pickerActionLabel then
+            pickerActionLabel.Text = "Action: Rerolled 🔄"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: Rerolled (" .. cost .. "G)" end
+    elseif Config.AutoSkip then
+        SkipUpgrade:FireServer()
+        if pickerActionLabel then
+            pickerActionLabel.Text = "Action: Skipped ⏭️"
+            pickerActionLabel.TextColor3 = Color3.fromRGB(180, 80, 80)
+        end
+        if pickerLastLabel then pickerLastLabel.Text = "Last: Skipped" end
+    end
+end
+
+task.spawn(function()
+    while isAlive do
+        local gold = getGold()
+        local cost = getRerollCost()
+        if pickerGoldLabel and pickerGoldLabel.Parent then
+            pickerGoldLabel.Text = "Gold: " .. gold .. "  |  Reroll: " .. (cost == math.huge and "?" or cost .. "G")
+        end
+        task.wait(Config.GoldUpdateInterval)
+    end
+end)
+
+player.Idled:Connect(function()
+    if isAlive and Config.AntiAFK then
+        pcall(function()
+            VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+            task.wait(0.5)
+            VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+        end)
+    end
+end)
+
+task.spawn(function()
+    local ran = Random.new()
+    while true do
+        if isAlive and Config.AntiAFK then
+            pcall(function()
+                local char = player.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local randomAngle = ran:NextNumber(0, math.pi * 2)
+                    local moveDir = Vector3.new(math.cos(randomAngle), 0, math.sin(randomAngle))
+                    local t = 0
+                    while t < 1 and Config.AntiAFK and isAlive and hum.Health > 0 do
+                        hum:Move(moveDir, false) t = t + task.wait()
+                    end
+                    t = 0
+                    while t < 1 and Config.AntiAFKsz and isAlive and hum.Health > 0 do
+                        hum:Move(-moveDir, false) t = t + task.wait()
+                    end
+                end
+            end)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+local cachedChests = {}
+task.spawn(function()
+    while true do
+        if isAlive and Config.AutoChest then
+            pcall(function()
+                local newList = {}
+                for _, v in ipairs(workspace:GetDescendants()) do
+                    if v.Name:lower():find("chest") then
+                        local part = v:IsA("BasePart") and v or v:FindFirstChildWhichIsA("BasePart", true)
+                        if part then table.insert(newList, part) end
+                    end
+                end
+                cachedChests = newList
+            end)
+            task.wait(2)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+task.spawn(function()
+    tracerBeam = workspace:FindFirstChild("ChestTracerBeam") or Instance.new("Beam")
+    tracerBeam.Name = "ChestTracerBeam"
+    tracerBeam.Width0 = 0.15 tracerBeam.Width1 = 0.15
+    tracerBeam.Color = ColorSequence.new(getThemeColor())
+    tracerBeam.FaceCamera = true tracerBeam.Parent = workspace
+
+    local path = PathfindingService:CreatePath({AgentRadius = 3, AgentHeight = 5, AgentCanJump = true})
+    local currentChest, waypoints, currentWaypointIndex, lastPathTime = nil, {}, 1, 0
+
+    while true do
+        task.wait(0.05)
+        if isAlive and Config.AutoChest then
+            pcall(function()
+                local char = player.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                
+                if hrp and hum and hum.Health > 0 then
+                    local closestChest, minDist = nil, math.huge
+                    for _, part in ipairs(cachedChests) do
+                        if part and part:IsDescendantOf(workspace) then
+                            local dist = (hrp.Position - part.Position).Magnitude
+                            if dist < minDist and dist <= Config.MaxChestDistance then
+                                minDist = dist closestChest = part
+                            end
+                        end
+                    end
+                    
+                    if closestChest then
+                        if closestChest ~= currentChest or tick() - lastPathTime > 1 then
+                            currentChest = closestChest
+                            path:ComputeAsync(hrp.Position, closestChest.Position)
+                            if path.Status == Enum.PathStatus.Success then
+                                waypoints = path:GetWaypoints() currentWaypointIndex = 2 lastPathTime = tick()
+                            else
+                                waypoints = {}
+                            end
+                        end
+
+                        if #waypoints > 0 and currentWaypointIndex <= #waypoints then
+                            local targetWaypoint = waypoints[currentWaypointIndex]
+                            local wpDist = (hrp.Position - targetWaypoint.Position).Magnitude
+                            if wpDist < 4 then
+                                currentWaypointIndex = currentWaypointIndex + 1
+                                if currentWaypointIndex <= #waypoints then targetWaypoint = waypoints[currentWaypointIndex] end
+                            end
+
+                            if targetWaypoint then
+                                if targetWaypoint.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
+                                local dir = (targetWaypoint.Position - hrp.Position).Unit
+                                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                                local sway = math.sin(tick() * 5) * 1.2
+                                local targetPos = targetWaypoint.Position
+                                if minDist >= 12 then targetPos = targetPos + (perp * sway) end
+                                hum:MoveTo(targetPos)
+                            else
+                                hum:MoveTo(closestChest.Position)
+                            end
+                        else
+                            hum:MoveTo(closestChest.Position)
+                        end
+                        
+                        if Config.ChestTracers then
+                            local att0 = hrp:FindFirstChild("ChestTracerAtt") or Instance.new("Attachment", hrp) att0.Name = "ChestTracerAtt"
+                            local att1 = closestChest:FindFirstChild("ChestTracerAtt") or Instance.new("Attachment", closestChest) att1.Name = "ChestTracerAtt"
+                            tracerBeam.Attachment0 = att0 tracerBeam.Attachment1 = att1 tracerBeam.Enabled = true
+                        else
+                            tracerBeam.Enabled = false
+                        end
+                        
+                        if minDist < 15 then
+                            local prompt = closestChest:FindFirstChildWhichIsA("ProximityPrompt", true) or closestChest.Parent:FindFirstChildWhichIsA("ProximityPrompt", true)
+                            if prompt and fireproximityprompt then fireproximityprompt(prompt) end
+                            if firetouchinterest then
+                                firetouchinterest(hrp, closestChest, 0) task.wait(0.01) firetouchinterest(hrp, closestChest, 1)
+                            end
+                        end
+                    else
+                        tracerBeam.Enabled = false
+                    end
+                end
+            end)
+        else
+            tracerBeam.Enabled = false
+        end
+    end
+end)
